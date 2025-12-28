@@ -1,0 +1,266 @@
+                    <button class="btn btn-secondary btn-icon btn-sm" onclick="importStationHistory('${s.id}','${s.identificador}')" title="Importar Histórico"><i class="fas fa-history"></i></button>
+                    <button class="btn btn-secondary btn-icon btn-sm" onclick="editStation('${s.id}')" title="Editar"><i class="fas fa-edit"></i></button>
+                    <button class="btn btn-danger btn-icon btn-sm" onclick="deleteStation('${s.id}','${s.nome}')" title="Desativar"><i class="fas fa-trash"></i></button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ============ LOGS ============
+async function loadLogs(){
+    const{data}=await sb.from('sync_logs').select('*').order('criado_em',{ascending:false}).limit(50);
+    const tbody=document.getElementById('logsTable');
+    
+    if(!data?.length){
+        tbody.innerHTML='<tr><td colspan="4" class="empty-state">Nenhum log encontrado</td></tr>';
+        return;
+    }
+    
+    tbody.innerHTML=data.map(l=>{
+        const dt=new Date(l.criado_em).toLocaleString('pt-BR');
+        const typeClass={sucesso:'badge-success',erro:'badge-danger',info:'badge-info'}[l.tipo]||'badge-info';
+        return `<tr>
+            <td style="font-size:12px">${dt}</td>
+            <td><code style="font-size:11px">${l.estacao_identificador||'--'}</code></td>
+            <td><span class="badge ${typeClass}">${l.tipo}</span></td>
+            <td style="font-size:12px">${l.mensagem}</td>
+        </tr>`;
+    }).join('');
+}
+
+// ============ COOPERATIVAS ============
+async function loadEmpresas(){
+    const{data}=await sb.from('empresas').select('*').eq('ativo',true);
+    empresas=data||[];
+    const sel=document.getElementById('newStationEmpresa');
+    sel.innerHTML='<option value="">Selecione...</option>'+empresas.map(c=>`<option value="${c.id}">${c.nome}</option>`).join('');
+}
+
+// ============ ADD STATION MODAL ============
+function openAddStationModal(){
+    document.getElementById('addStationModal').classList.remove('hidden');
+    goToStep(1);
+    selectedDevice=null;
+}
+
+function closeAddStationModal(){
+    document.getElementById('addStationModal').classList.add('hidden');
+}
+
+function goToStep(n){
+    for(let i=1;i<=3;i++){
+        document.getElementById('step'+i).classList.remove('active','completed');
+        document.getElementById('stepContent'+i).style.display='none';
+    }
+    for(let i=1;i<n;i++)document.getElementById('step'+i).classList.add('completed');
+    document.getElementById('step'+n).classList.add('active');
+    document.getElementById('stepContent'+n).style.display='block';
+}
+
+// ============ FETCH DEVICES ============
+async function fetchDevices(){
+    const btn=document.getElementById('btnFetchDevices');
+    btn.disabled=true;
+    btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Buscando...';
+    
+    try{
+        const{data,error}=await sb.rpc('fetch_ecowitt_devices');
+        if(error)throw error;
+        
+        toast('Buscando dispositivos...','info');
+        await new Promise(r=>setTimeout(r,5000));
+        
+        const{data:procData,error:procError}=await sb.rpc('process_ecowitt_devices');
+        if(procError)throw procError;
+        
+        if(!procData.success)throw new Error(procData.error||'Erro ao processar');
+        
+        toast(procData.message,'success');
+        await loadAvailableDevices();
+        goToStep(2);
+        
+    }catch(err){
+        toast('Erro: '+err.message,'error');
+    }
+    
+    btn.disabled=false;
+    btn.innerHTML='<i class="fas fa-search"></i> Buscar Dispositivos Ecowitt';
+}
+
+async function loadAvailableDevices(){
+    const{data,error}=await sb.rpc('get_available_devices');
+    const list=document.getElementById('deviceList');
+    
+    if(error||!data?.length){
+        list.innerHTML='<div class="empty-state"><p>Nenhum dispositivo encontrado</p></div>';
+        return;
+    }
+    
+    list.innerHTML=data.map(d=>{
+        const disabled=d.ja_cadastrado?'disabled':'';
+        const statusText=d.ja_cadastrado?`<span class="badge badge-success">Cadastrado: ${d.estacao_nome}</span>`:'<span class="badge badge-info">Disponível</span>';
+        return `<div class="device-item ${disabled}" onclick="${disabled?'':'selectDevice(this,`'+d.imei+'`,`'+(d.nome||'')+' `,'+d.latitude+','+d.longitude+')'}">
+            <div class="device-icon"><i class="fas fa-broadcast-tower"></i></div>
+            <div class="device-info">
+                <div class="device-name">${d.nome||'Sem nome'}</div>
+                <div class="device-imei">${d.imei} ${d.modelo?'• '+d.modelo:''}</div>
+            </div>
+            <div class="device-status">${statusText}</div>
+        </div>`;
+    }).join('');
+}
+
+function selectDevice(el,imei,nome,lat,lon){
+    document.querySelectorAll('.device-item').forEach(d=>d.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedDevice={imei,nome,lat,lon};
+    document.getElementById('btnNextStep2').disabled=false;
+    document.getElementById('newStationName').value=nome||'';
+    document.getElementById('newStationLat').value=lat||'';
+    document.getElementById('newStationLon').value=lon||'';
+}
+
+// ============ ADD STATION ============
+async function addStation(){
+    const nome=document.getElementById('newStationName').value.trim();
+    const empresaId=document.getElementById('newStationEmpresa').value;
+    const lat=document.getElementById('newStationLat').value;
+    const lon=document.getElementById('newStationLon').value;
+    const importHist=document.getElementById('importHistoryCheck').checked;
+    
+    if(!nome){toast('Informe o nome','error');return}
+    if(!empresaId){toast('Selecione empresa','error');return}
+    if(!selectedDevice){toast('Selecione dispositivo','error');return}
+    
+    const btn=document.getElementById('btnAddStation');
+    btn.disabled=true;
+    btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Cadastrando...';
+    
+    try{
+        const{data,error}=await sb.rpc('add_station',{
+            p_empresa_id:empresaId,
+            p_imei:selectedDevice.imei,
+            p_nome:nome,
+            p_latitude:lat?parseFloat(lat):null,
+            p_longitude:lon?parseFloat(lon):null
+        });
+        
+        if(error)throw error;
+        if(!data.success)throw new Error(data.error);
+        
+        toast('Estação cadastrada!','success');
+        
+        await sb.rpc('sync_single_station',{p_station_id:data.station_id});
+        await new Promise(r=>setTimeout(r,5000));
+        await sb.rpc('sync_process_responses');
+        
+        if(importHist){
+            toast('Importando histórico...','info');
+            await sb.rpc('import_full_history',{
+                p_estacao_id:data.station_id,
+                p_identificador:selectedDevice.imei,
+                p_months_back:12
+            });
+        }
+        
+        closeAddStationModal();
+        await loadData();
+        
+    }catch(err){
+        toast('Erro: '+err.message,'error');
+    }
+    
+    btn.disabled=false;
+    btn.innerHTML='<i class="fas fa-check"></i> Cadastrar Estação';
+}
+
+// ============ EDIT STATION ============
+function editStation(id){
+    const s=stations.find(x=>x.id===id);
+    if(!s)return;
+    document.getElementById('editStationId').value=s.id;
+    document.getElementById('editStationName').value=s.nome;
+    document.getElementById('editStationLat').value=s.latitude||'';
+    document.getElementById('editStationLon').value=s.longitude||'';
+    document.getElementById('editStationStatus').value=s.ativo?'true':'false';
+    document.getElementById('editStationModal').classList.remove('hidden');
+}
+
+function closeEditModal(){document.getElementById('editStationModal').classList.add('hidden')}
+
+async function saveStation(){
+    const id=document.getElementById('editStationId').value;
+    const nome=document.getElementById('editStationName').value.trim();
+    const lat=document.getElementById('editStationLat').value;
+    const lon=document.getElementById('editStationLon').value;
+    const ativo=document.getElementById('editStationStatus').value==='true';
+    
+    try{
+        const{error}=await sb.rpc('update_station',{
+            p_station_id:id,
+            p_nome:nome||null,
+            p_latitude:lat?parseFloat(lat):null,
+            p_longitude:lon?parseFloat(lon):null,
+            p_ativo:ativo
+        });
+        if(error)throw error;
+        toast('Estação atualizada!','success');
+        closeEditModal();
+        await loadStations();
+    }catch(err){
+        toast('Erro: '+err.message,'error');
+    }
+}
+
+// ============ DELETE STATION ============
+async function deleteStation(id,nome){
+    if(!confirm('Desativar estação "'+nome+'"?\n\nDados históricos serão mantidos.'))return;
+    try{
+        const{error}=await sb.rpc('delete_station',{p_station_id:id});
+        if(error)throw error;
+        toast('Estação desativada','success');
+        await loadData();
+    }catch(err){toast('Erro: '+err.message,'error')}
+}
+
+// ============ SYNC STATION ============
+async function syncStation(id){
+    toast('Sincronizando...','info');
+    try{
+        await sb.rpc('sync_single_station',{p_station_id:id});
+        await new Promise(r=>setTimeout(r,5000));
+        await sb.rpc('sync_process_responses');
+        toast('Sincronizado!','success');
+        await loadStations();
+    }catch(err){toast('Erro: '+err.message,'error')}
+}
+
+// ============ IMPORT HISTORY ============
+async function importStationHistory(id,imei){
+    const months=prompt('Meses de histórico a importar:','12');
+    if(!months)return;
+    toast('Importando histórico...','info');
+    try{
+        await sb.rpc('import_full_history',{p_estacao_id:id,p_identificador:imei,p_months_back:parseInt(months)});
+        await new Promise(r=>setTimeout(r,15000));
+        const{data}=await sb.rpc('process_history_response');
+        toast(data?.message||'Histórico importado','success');
+        await loadLogs();
+    }catch(err){toast('Erro: '+err.message,'error')}
+}
+
+// ============ LOGOUT ============
+async function logout(){await sb.auth.signOut();window.location.href='index.html'}
+
+// ============ TOAST ============
+function toast(msg,type='info'){
+    const t=document.createElement('div');
+    t.className='toast '+type;
+    t.textContent=msg;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),4000);
+}
+</script>
+</body>
+</html>
