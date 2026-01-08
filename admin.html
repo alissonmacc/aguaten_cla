@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aguaten - Administração</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root{--primary:#10b981;--primary-dark:#059669;--secondary:#3b82f6;--bg-dark:#1e293b;--bg-darker:#0f172a;--bg-card:#334155;--text-primary:#f1f5f9;--text-secondary:#94a3b8;--border:#475569;--success:#22c55e;--warning:#f59e0b;--danger:#ef4444;--info:#3b82f6}
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg-darker);color:var(--text-primary);min-height:100vh}
+        
+        .app-container{display:flex;min-height:100vh}
+        .sidebar{width:240px;background:var(--bg-dark);border-right:1px solid var(--border);position:fixed;height:100vh;z-index:100;display:flex;flex-direction:column;transition:transform .3s}
+        .sidebar-header{padding:20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
+        .sidebar-logo{width:36px;height:36px;background:linear-gradient(135deg,var(--primary),var(--secondary));border-radius:8px;display:flex;align-items:center;justify-content:center}
+        .sidebar-brand{font-size:18px;font-weight:700;color:var(--primary)}
+        .sidebar-nav{flex:1;padding:15px}
+        .nav-item{display:flex;align-items:center;gap:12px;padding:12px 15px;color:var(--text-secondary);text-decoration:none;border-radius:8px;margin-bottom:4px}
+        .nav-item:hover{background:var(--bg-card);color:var(--text-primary)}
+        .nav-item.active{background:var(--primary);color:white}
+        .nav-item i{width:20px}
+        .sidebar-close{display:none;position:absolute;top:15px;right:15px;background:none;border:none;color:var(--text-primary);font-size:24px;cursor:pointer}
+        
+        .main-content{flex:1;margin-left:240px;padding:20px}
+        
+        .mobile-header{display:none;position:fixed;top:0;left:0;right:0;background:var(--bg-dark);padding:12px 15px;z-index:90;border-bottom:1px solid var(--border);align-items:center;justify-content:space-between}
+        .mobile-header-left{display:flex;align-items:center;gap:10px}
+        .menu-toggle{background:none;border:none;color:var(--text-primary);font-size:22px;cursor:pointer}
+        .mobile-title{font-size:16px;font-weight:600;color:var(--primary)}
+        .sidebar-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:99}
+        .sidebar-overlay.show{display:block}
+        
+        .page-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:15px}
+        .page-title{font-size:24px;font-weight:600}
+        
+        .btn{padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500;display:inline-flex;align-items:center;gap:8px;transition:all .2s}
+        .btn-primary{background:var(--primary);color:white}
+        .btn-primary:hover{background:var(--primary-dark)}
+        .btn-secondary{background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border)}
+        .btn-secondary:hover{background:var(--border)}
+        .btn-danger{background:var(--danger);color:white}
+        .btn-success{background:var(--success);color:white}
+        .btn-sm{padding:6px 12px;font-size:12px}
+        .btn-icon{width:36px;height:36px;padding:0;justify-content:center}
+        .btn:disabled{opacity:.5;cursor:not-allowed}
+        
+        .card{background:var(--bg-card);border-radius:12px;padding:20px;margin-bottom:20px}
+        .card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
+        .card-title{font-size:16px;font-weight:600;display:flex;align-items:center;gap:10px}
+        .card-title i{color:var(--primary)}
+        
+        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+        .stat-card{background:var(--bg-card);border-radius:12px;padding:20px;display:flex;align-items:center;gap:16px}
+        .stat-icon{width:50px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px}
+        .stat-icon.blue{background:rgba(59,130,246,.2);color:var(--info)}
+        .stat-icon.green{background:rgba(34,197,94,.2);color:var(--success)}
+        .stat-icon.yellow{background:rgba(245,158,11,.2);color:var(--warning)}
+        .stat-icon.red{background:rgba(239,68,68,.2);color:var(--danger)}
+        .stat-value{font-size:28px;font-weight:700}
+        .stat-label{font-size:12px;color:var(--text-secondary)}
+        
+        .table-container{overflow-x:auto}
+        table{width:100%;border-collapse:collapse}
+        th,td{padding:12px 16px;text-align:left;border-bottom:1px solid var(--border)}
+        th{font-size:11px;text-transform:uppercase;color:var(--text-secondary);font-weight:600}
+        td{font-size:13px}
+        tr:hover{background:var(--bg-dark)}
+        .badge{padding:4px 10px;border-radius:20px;font-size:11px;font-weight:500}
+        .badge-success{background:rgba(34,197,94,.2);color:var(--success)}
+        .badge-warning{background:rgba(245,158,11,.2);color:var(--warning)}
+        .badge-danger{background:rgba(239,68,68,.2);color:var(--danger)}
+        .badge-info{background:rgba(59,130,246,.2);color:var(--info)}
+        
+        .modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+        .modal-overlay.hidden{display:none}
+        .modal{background:var(--bg-dark);border-radius:16px;padding:30px;width:100%;max-width:600px;border:1px solid var(--border);max-height:90vh;overflow-y:auto}
+        .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;padding-bottom:15px;border-bottom:1px solid var(--border)}
+        .modal-title{font-size:18px;font-weight:600;display:flex;align-items:center;gap:10px}
+        .modal-close{background:none;border:none;color:var(--text-secondary);font-size:20px;cursor:pointer}
+        
+        .form-group{margin-bottom:18px}
+        .form-group label{display:block;margin-bottom:6px;font-size:13px;color:var(--text-secondary)}
+        .form-group input,.form-group select{width:100%;padding:11px 14px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;color:var(--text-primary);font-size:13px}
+        .form-row{display:grid;grid-template-columns:1fr 1fr;gap:15px}
+        .form-hint{font-size:11px;color:var(--text-secondary);margin-top:4px}
+        
+        .device-list{max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:8px}
+        .device-item{display:flex;align-items:center;gap:12px;padding:12px 15px;border-bottom:1px solid var(--border);cursor:pointer}
+        .device-item:hover{background:var(--bg-card)}
+        .device-item.selected{background:var(--primary);color:white}
+        .device-item.disabled{opacity:.5;cursor:not-allowed}
+        .device-icon{width:40px;height:40px;background:var(--bg-dark);border-radius:8px;display:flex;align-items:center;justify-content:center}
+        .device-info{flex:1}
+        .device-name{font-weight:600;font-size:14px}
+        .device-imei{font-size:11px;color:var(--text-secondary);font-family:monospace}
+        
+        .steps{display:flex;margin-bottom:24px}
+        .step{flex:1;text-align:center;padding:12px;position:relative}
+        .step-number{width:30px;height:30px;border-radius:50%;background:var(--bg-card);border:2px solid var(--border);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:600}
+        .step.active .step-number{background:var(--primary);border-color:var(--primary);color:white}
+        .step.completed .step-number{background:var(--success);border-color:var(--success);color:white}
+        .step-label{font-size:11px;color:var(--text-secondary);margin-top:6px}
+        
+        .empty-state{text-align:center;padding:40px;color:var(--text-secondary)}
+        .empty-state i{font-size:48px;margin-bottom:16px;opacity:.5}
+        
+        .toast{position:fixed;top:20px;right:20px;padding:12px 20px;background:var(--bg-card);border-radius:8px;border-left:4px solid var(--primary);z-index:2000;font-size:13px}
+        .toast.error{border-color:var(--danger)}
+        .toast.success{border-color:var(--success)}
+        
+        .action-btns{display:flex;gap:6px}
+        
+        @media(max-width:768px){
+            .sidebar{transform:translateX(-100%)}
+            .sidebar.open{transform:translateX(0)}
+            .sidebar-close{display:block}
+            .main-content{margin-left:0;padding:70px 12px 20px}
+            .mobile-header{display:flex}
+        }
+    </style>
+</head>
+<body>
+
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+<div class="app-container">
+    <div class="mobile-header">
+        <div class="mobile-header-left">
+            <button class="menu-toggle" onclick="openSidebar()"><i class="fas fa-bars"></i></button>
+            <span class="mobile-title">Admin</span>
+        </div>
+    </div>
+    
+    <aside class="sidebar" id="sidebar">
+        <button class="sidebar-close" onclick="closeSidebar()"><i class="fas fa-times"></i></button>
+        <div class="sidebar-header">
+            <div class="sidebar-logo"><i class="fas fa-cloud-sun-rain" style="color:white"></i></div>
+            <span class="sidebar-brand">Aguaten</span>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="index.html" class="nav-item"><i class="fas fa-chart-line"></i> Dashboard</a>
+            <a href="relatorios.html" class="nav-item"><i class="fas fa-file-alt"></i> Relatórios</a>
+            <a href="admin.html" class="nav-item active"><i class="fas fa-shield-alt"></i> Admin</a>
+            <a href="#" class="nav-item" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Sair</a>
+        </nav>
+    </aside>
+    
+    <main class="main-content">
+        <div class="page-header">
+            <h1 class="page-title"><i class="fas fa-shield-alt" style="color:var(--primary)"></i> Administração</h1>
+            <button class="btn btn-primary" onclick="openAddStationModal()"><i class="fas fa-plus"></i> Nova Estação</button>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon blue"><i class="fas fa-broadcast-tower"></i></div>
+                <div><div class="stat-value" id="statStations">--</div><div class="stat-label">Estações Ativas</div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green"><i class="fas fa-database"></i></div>
+                <div><div class="stat-value" id="statRecords">--</div><div class="stat-label">Total Registros</div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon yellow"><i class="fas fa-sync"></i></div>
+                <div><div class="stat-value" id="statLastSync">--</div><div class="stat-label">Última Sync</div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon red"><i class="fas fa-users"></i></div>
+                <div><div class="stat-value" id="statUsers">--</div><div class="stat-label">Usuários</div></div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-broadcast-tower"></i> Estações</div>
+                <button class="btn btn-secondary btn-sm" onclick="loadStations()"><i class="fas fa-refresh"></i></button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Nome</th><th>IMEI</th><th>Empresa</th><th>Última Sync</th><th>Temp</th><th>Status</th><th>Ações</th></tr></thead>
+                    <tbody id="stationsTable"><tr><td colspan="7">Carregando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title"><i class="fas fa-history"></i> Logs</div>
+                <button class="btn btn-secondary btn-sm" onclick="loadLogs()"><i class="fas fa-refresh"></i></button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Data/Hora</th><th>Estação</th><th>Tipo</th><th>Mensagem</th></tr></thead>
+                    <tbody id="logsTable"><tr><td colspan="4">Carregando...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Add Station Modal -->
+<div class="modal-overlay hidden" id="addStationModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-plus-circle" style="color:var(--primary)"></i> Nova Estação</div>
+            <button class="modal-close" onclick="closeAddStationModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="steps">
+            <div class="step active" id="step1"><div class="step-number">1</div><div class="step-label">Buscar</div></div>
+            <div class="step" id="step2"><div class="step-number">2</div><div class="step-label">Selecionar</div></div>
+            <div class="step" id="step3"><div class="step-number">3</div><div class="step-label">Configurar</div></div>
+        </div>
+        <div id="stepContent1">
+            <div class="empty-state">
+                <i class="fas fa-satellite-dish"></i>
+                <p>Buscar dispositivos Ecowitt disponíveis</p>
+                <button class="btn btn-primary" onclick="fetchDevices()" id="btnFetchDevices"><i class="fas fa-search"></i> Buscar</button>
+            </div>
+        </div>
+        <div id="stepContent2" style="display:none">
+            <div class="device-list" id="deviceList"></div>
+            <div style="display:flex;gap:10px;margin-top:20px">
+                <button class="btn btn-secondary" onclick="goToStep(1)"><i class="fas fa-arrow-left"></i> Voltar</button>
+                <button class="btn btn-primary" onclick="goToStep(3)" id="btnNextStep2" disabled>Próximo <i class="fas fa-arrow-right"></i></button>
+            </div>
+        </div>
+        <div id="stepContent3" style="display:none">
+            <div class="form-group"><label>Nome *</label><input type="text" id="newStationName" placeholder="Nome da estação"></div>
+            <div class="form-group"><label>Empresa *</label><select id="newStationEmpresa"></select></div>
+            <div class="form-row">
+                <div class="form-group"><label>Latitude</label><input type="number" step="any" id="newStationLat"></div>
+                <div class="form-group"><label>Longitude</label><input type="number" step="any" id="newStationLon"></div>
+            </div>
+            <div class="form-group"><label><input type="checkbox" id="importHistoryCheck" checked> Importar histórico (12 meses)</label></div>
+            <div style="display:flex;gap:10px;margin-top:20px">
+                <button class="btn btn-secondary" onclick="goToStep(2)"><i class="fas fa-arrow-left"></i> Voltar</button>
+                <button class="btn btn-success" onclick="addStation()" id="btnAddStation"><i class="fas fa-check"></i> Cadastrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Station Modal -->
+<div class="modal-overlay hidden" id="editStationModal">
+    <div class="modal">
+        <div class="modal-header">
+            <div class="modal-title"><i class="fas fa-edit" style="color:var(--primary)"></i> Editar Estação</div>
+            <button class="modal-close" onclick="closeEditModal()"><i class="fas fa-times"></i></button>
+        </div>
+        <input type="hidden" id="editStationId">
+        <div class="form-group"><label>Nome</label><input type="text" id="editStationName"></div>
+        <div class="form-row">
+            <div class="form-group"><label>Latitude</label><input type="number" step="any" id="editStationLat"></div>
+            <div class="form-group"><label>Longitude</label><input type="number" step="any" id="editStationLon"></div>
+        </div>
+        <div class="form-group"><label>Status</label><select id="editStationStatus"><option value="true">Ativo</option><option value="false">Inativo</option></select></div>
+        <div style="display:flex;gap:10px;margin-top:20px">
+            <button class="btn btn-secondary" onclick="closeEditModal()">Cancelar</button>
+            <button class="btn btn-primary" onclick="saveStation()"><i class="fas fa-save"></i> Salvar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const SUPABASE_URL='https://ltwtqjrojbobfngcryjw.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx0d3RxanJvamJvYmZuZ2NyeWp3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2NjAyODcsImV4cCI6MjA4MjIzNjI4N30.le4b9sZ7jMfpPjPn9FiWK9tpDxnTn0VaCl2vlQv14SA';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+let user=null,profile=null,stations=[],empresas=[],selectedDevice=null;
+
+document.addEventListener('DOMContentLoaded',async()=>{
+    const{data:{session}}=await sb.auth.getSession();
+    if(!session){window.location.href='index.html';return}
+    user=session.user;
+    await loadProfile();
+    if(!profile?.is_admin){window.location.href='index.html';return}
+    await loadData();
+});
+
+async function loadProfile(){const{data}=await sb.from('perfis').select('*').eq('id',user.id).single();profile=data}
+async function loadData(){await Promise.all([loadStations(),loadStats(),loadLogs(),loadEmpresas()])}
+
+function openSidebar(){document.getElementById('sidebar').classList.add('open');document.getElementById('sidebarOverlay').classList.add('show')}
+function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarOverlay').classList.remove('show')}
+
+async function loadStats(){
+    const{data:st}=await sb.from('estacoes').select('id').eq('ativo',true);
+    const{count:rec}=await sb.from('estacao_dados').select('id',{count:'exact',head:true});
+    const{count:usr}=await sb.from('perfis').select('id',{count:'exact',head:true});
+    const{data:sync}=await sb.from('estacoes').select('ultima_sincronizacao').order('ultima_sincronizacao',{ascending:false}).limit(1);
+    document.getElementById('statStations').textContent=st?.length||0;
+    document.getElementById('statRecords').textContent=rec?.toLocaleString()||0;
+    document.getElementById('statUsers').textContent=usr||0;
+    if(sync?.[0]?.ultima_sincronizacao)document.getElementById('statLastSync').textContent=new Date(sync[0].ultima_sincronizacao).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+
+async function loadStations(){
+    const{data}=await sb.from('estacoes').select('*, empresas(nome)').order('nome');
+    stations=data||[];
+    const tbody=document.getElementById('stationsTable');
+    if(!stations.length){tbody.innerHTML='<tr><td colspan="7">Nenhuma estação</td></tr>';return}
+    tbody.innerHTML=stations.map(s=>{
+        const sync=s.ultima_sincronizacao?new Date(s.ultima_sincronizacao).toLocaleString('pt-BR'):'Nunca';
+        const temp=s.data_cache?.temperatura;
+        return `<tr>
+            <td><strong>${s.nome}</strong></td>
+            <td><code>${s.identificador||'--'}</code></td>
+            <td>${s.empresas?.nome||'--'}</td>
+            <td style="font-size:12px">${sync}</td>
+            <td>${temp?temp.toFixed(1)+'°C':'--'}</td>
+            <td><span class="badge ${s.ativo?'badge-success':'badge-danger'}">${s.ativo?'Ativo':'Inativo'}</span></td>
+            <td><div class="action-btns">
+                <button class="btn btn-secondary btn-icon btn-sm" onclick="syncStation('${s.id}')" title="Sync"><i class="fas fa-sync"></i></button>
+                <button class="btn btn-secondary btn-icon btn-sm" onclick="importStationHistory('${s.id}','${s.identificador}')" title="Histórico"><i class="fas fa-history"></i></button>
+                <button class="btn btn-secondary btn-icon btn-sm" onclick="editStation('${s.id}')" title="Editar"><i class="fas fa-edit"></i></button>
+                <button class="btn btn-danger btn-icon btn-sm" onclick="deleteStation('${s.id}','${s.nome}')" title="Desativar"><i class="fas fa-trash"></i></button>
+            </div></td>
+        </tr>`;
+    }).join('');
+}
+
+async function loadLogs(){
+    const{data}=await sb.from('sync_logs').select('*').order('criado_em',{ascending:false}).limit(50);
+    const tbody=document.getElementById('logsTable');
+    if(!data?.length){tbody.innerHTML='<tr><td colspan="4">Sem logs</td></tr>';return}
+    tbody.innerHTML=data.map(l=>`<tr>
+        <td style="font-size:12px">${new Date(l.criado_em).toLocaleString('pt-BR')}</td>
+        <td><code>${l.estacao_identificador||'--'}</code></td>
+        <td><span class="badge badge-${l.tipo==='sucesso'?'success':l.tipo==='erro'?'danger':'info'}">${l.tipo}</span></td>
+        <td style="font-size:12px">${l.mensagem}</td>
+    </tr>`).join('');
+}
+
+async function loadEmpresas(){
+    const{data}=await sb.from('empresas').select('*').eq('ativo',true);
+    empresas=data||[];
+    document.getElementById('newStationEmpresa').innerHTML='<option value="">Selecione...</option>'+empresas.map(e=>`<option value="${e.id}">${e.nome}</option>`).join('');
+}
+
+function openAddStationModal(){document.getElementById('addStationModal').classList.remove('hidden');goToStep(1);selectedDevice=null}
+function closeAddStationModal(){document.getElementById('addStationModal').classList.add('hidden')}
+function goToStep(n){for(let i=1;i<=3;i++){document.getElementById('step'+i).classList.remove('active','completed');document.getElementById('stepContent'+i).style.display='none'}for(let i=1;i<n;i++)document.getElementById('step'+i).classList.add('completed');document.getElementById('step'+n).classList.add('active');document.getElementById('stepContent'+n).style.display='block'}
+
+async function fetchDevices(){
+    const btn=document.getElementById('btnFetchDevices');btn.disabled=true;btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> Buscando...';
+    try{
+        await sb.rpc('fetch_ecowitt_devices');toast('Buscando...','info');await new Promise(r=>setTimeout(r,5000));
+        const{data}=await sb.rpc('process_ecowitt_devices');if(!data?.success)throw new Error(data?.error||'Erro');
+        toast(data.message,'success');await loadAvailableDevices();goToStep(2);
+    }catch(e){toast('Erro: '+e.message,'error')}
+    btn.disabled=false;btn.innerHTML='<i class="fas fa-search"></i> Buscar';
+}
+
+async function loadAvailableDevices(){
+    const{data}=await sb.rpc('get_available_devices');
+    const list=document.getElementById('deviceList');
+    if(!data?.length){list.innerHTML='<div class="empty-state">Nenhum dispositivo</div>';return}
+    list.innerHTML=data.map(d=>`<div class="device-item ${d.ja_cadastrado?'disabled':''}" onclick="${d.ja_cadastrado?'':'selectDevice(this,\\''+d.imei+'\\',\\''+d.nome+'\\','+d.latitude+','+d.longitude+')'}">
+        <div class="device-icon"><i class="fas fa-broadcast-tower"></i></div>
+        <div class="device-info"><div class="device-name">${d.nome||'Sem nome'}</div><div class="device-imei">${d.imei}</div></div>
+        <span class="badge ${d.ja_cadastrado?'badge-success':'badge-info'}">${d.ja_cadastrado?'Cadastrado':'Disponível'}</span>
+    </div>`).join('');
+}
+
+function selectDevice(el,imei,nome,lat,lon){
+    document.querySelectorAll('.device-item').forEach(d=>d.classList.remove('selected'));el.classList.add('selected');
+    selectedDevice={imei,nome,lat,lon};document.getElementById('btnNextStep2').disabled=false;
+    document.getElementById('newStationName').value=nome||'';document.getElementById('newStationLat').value=lat||'';document.getElementById('newStationLon').value=lon||'';
+}
+
+async function addStation(){
+    const nome=document.getElementById('newStationName').value.trim(),empresaId=document.getElementById('newStationEmpresa').value;
+    const lat=document.getElementById('newStationLat').value,lon=document.getElementById('newStationLon').value;
+    if(!nome||!empresaId||!selectedDevice){toast('Preencha todos os campos','error');return}
+    const btn=document.getElementById('btnAddStation');btn.disabled=true;btn.innerHTML='<i class="fas fa-spinner fa-spin"></i>';
+    try{
+        const{data,error}=await sb.rpc('add_station',{p_empresa_id:empresaId,p_imei:selectedDevice.imei,p_nome:nome,p_latitude:lat?parseFloat(lat):null,p_longitude:lon?parseFloat(lon):null});
+        if(error)throw error;if(!data?.success)throw new Error(data?.error);
+        toast('Cadastrada!','success');
+        await sb.rpc('sync_single_station',{p_station_id:data.station_id});await new Promise(r=>setTimeout(r,5000));await sb.rpc('sync_process_responses');
+        if(document.getElementById('importHistoryCheck').checked){toast('Importando histórico...','info');await sb.rpc('import_full_history',{p_estacao_id:data.station_id,p_identificador:selectedDevice.imei,p_months_back:12})}
+        closeAddStationModal();await loadData();
+    }catch(e){toast('Erro: '+e.message,'error')}
+    btn.disabled=false;btn.innerHTML='<i class="fas fa-check"></i> Cadastrar';
+}
+
+function editStation(id){
+    const s=stations.find(x=>x.id===id);if(!s)return;
+    document.getElementById('editStationId').value=s.id;document.getElementById('editStationName').value=s.nome;
+    document.getElementById('editStationLat').value=s.latitude||'';document.getElementById('editStationLon').value=s.longitude||'';
+    document.getElementById('editStationStatus').value=s.ativo?'true':'false';document.getElementById('editStationModal').classList.remove('hidden');
+}
+function closeEditModal(){document.getElementById('editStationModal').classList.add('hidden')}
+
+async function saveStation(){
+    const id=document.getElementById('editStationId').value,nome=document.getElementById('editStationName').value.trim();
+    const lat=document.getElementById('editStationLat').value,lon=document.getElementById('editStationLon').value;
+    const ativo=document.getElementById('editStationStatus').value==='true';
+    try{
+        const{error}=await sb.rpc('update_station',{p_station_id:id,p_nome:nome||null,p_latitude:lat?parseFloat(lat):null,p_longitude:lon?parseFloat(lon):null,p_ativo:ativo});
+        if(error)throw error;toast('Atualizada!','success');closeEditModal();await loadStations();
+    }catch(e){toast('Erro: '+e.message,'error')}
+}
+
+async function deleteStation(id,nome){if(!confirm('Desativar "'+nome+'"?'))return;try{await sb.rpc('delete_station',{p_station_id:id});toast('Desativada','success');await loadData()}catch(e){toast('Erro: '+e.message,'error')}}
+async function syncStation(id){toast('Sincronizando...','info');try{await sb.rpc('sync_single_station',{p_station_id:id});await new Promise(r=>setTimeout(r,5000));await sb.rpc('sync_process_responses');toast('OK!','success');await loadStations()}catch(e){toast('Erro: '+e.message,'error')}}
+async function importStationHistory(id,imei){const m=prompt('Meses:','12');if(!m)return;toast('Importando...','info');try{await sb.rpc('import_full_history',{p_estacao_id:id,p_identificador:imei,p_months_back:parseInt(m)});await new Promise(r=>setTimeout(r,15000));const{data}=await sb.rpc('process_history_response');toast(data?.message||'OK','success');await loadLogs()}catch(e){toast('Erro: '+e.message,'error')}}
+
+async function logout(){await sb.auth.signOut();window.location.href='index.html'}
+function toast(msg,type='info'){const t=document.createElement('div');t.className='toast '+type;t.textContent=msg;document.body.appendChild(t);setTimeout(()=>t.remove(),4000)}
+</script>
+</body>
+</html>
